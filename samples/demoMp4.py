@@ -51,10 +51,12 @@ class_names = ['BG', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
 cap = cv2.VideoCapture("test.mp4")
 #cap = cv2.VideoCapture(0)
  
-#height = 720
-#width  = 1280
 height = 720
 width  = 1280
+# height = 360
+# width  = 690
+# height = 180
+# width  = 345
 
 def random_colors(N, bright=True):
     brightness = 1.0 if bright else 0.7
@@ -109,11 +111,29 @@ def display_instances(image, boxes, masks, class_ids, class_names,
     return masked_image.astype(np.uint8)
  
 def main():
+    # FPS 測定
+    tm = cv2.TickMeter()
+    tm.start()
+    count = 0
+    max_count = 10
+    fps = 0
+    
     while(True):
- 
         # 動画ストリームからフレームを取得
         ret, frame = cap.read()
-        
+
+        # FPS 測定
+        if count == max_count:
+            tm.stop()
+            fps = max_count / tm.getTimeSec()
+            tm.reset()
+            tm.start()
+            count = 0
+            print('fps: {:.2f}'.format(fps))
+
+        cv2.putText(frame, 'FPS: {:.2f}'.format(fps),(10,30),
+                cv2.FONT_HERSHEY_SIMPLEX,1.0,(0,255,0),thickness=2)        
+
         # カメラ画像をリサイズ
         image_cv2 = cv2.resize(frame,(width,height))
         
@@ -124,7 +144,8 @@ def main():
                             class_names, r['scores'])
  
         cv2.imshow("camera window", camera) 
- 
+        count += 1
+
         # escを押したら終了。
         if cv2.waitKey(1) == 27:
             break
