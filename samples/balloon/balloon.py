@@ -59,11 +59,11 @@ class BalloonConfig(Config):
     Derives from the base Config class and overrides some values.
     """
     # Give the configuration a recognizable name
-    NAME = "balloon"
+    NAME = "balloon_test50"
 
     # We use a GPU with 12GB memory, which can fit two images.
     # Adjust down if you use a smaller GPU.
-    IMAGES_PER_GPU = 1
+    IMAGES_PER_GPU = 2
 
     # Number of classes (including background)
     NUM_CLASSES = 1 + 1  # Background + balloon
@@ -251,6 +251,14 @@ def detect_and_color_splash(model, image_path=None, video_path=None):
 
         count = 0
         success = True
+        
+        # FPS 測定
+        tm = cv2.TickMeter()
+        tm.start()
+        count_fps = 0
+        max_count = 10
+        fps = 0
+
         while success:
             print("frame: ", count)
             # Read next image
@@ -267,6 +275,17 @@ def detect_and_color_splash(model, image_path=None, video_path=None):
                 # Add image to video writer
                 vwriter.write(splash)
                 count += 1
+
+                # FPS 測定
+                count_fps += 1
+                if count_fps == max_count:
+                    tm.stop()
+                    fps_out = max_count / tm.getTimeSec()
+                    tm.reset()
+                    tm.start()
+                    count_fps = 0
+                    print('fps: {:.2f}'.format(fps_out))
+                
         vwriter.release()
     print("Saved to ", file_name)
 

@@ -6,6 +6,7 @@ import numpy as np
 import skimage.io
 import matplotlib
 import matplotlib.pyplot as plt
+from multiprocessing import Process,Queue
 
 # import coco
 from coco import coco
@@ -22,10 +23,13 @@ MODEL_DIR = os.path.join(ROOT_DIR, "logs")
 COCO_MODEL_PATH = os.path.join(ROOT_DIR, "../mask_rcnn_coco.h5")
 if not os.path.exists(COCO_MODEL_PATH):
     utils.download_trained_weights(COCO_MODEL_PATH)
- 
+
+IMAGES_BATCH = 21
+
 class InferenceConfig(coco.CocoConfig):
     GPU_COUNT = 1
-    IMAGES_PER_GPU = 1
+    # IMAGES_PER_GPU = 1
+    IMAGES_PER_GPU = IMAGES_BATCH
  
 config = InferenceConfig()
  
@@ -50,13 +54,18 @@ class_names = ['BG', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
  
 cap = cv2.VideoCapture("test.mp4")
 #cap = cv2.VideoCapture(0)
- 
-height = 720
-width  = 1280
+
+# height = 720
+# width  = 1280 
+# height = 800
+# width  = 800
 # height = 360
-# width  = 690
+# width  = 640
 # height = 180
-# width  = 345
+# width  = 320
+height = 600
+width  = 600
+
 
 def random_colors(N, bright=True):
     brightness = 1.0 if bright else 0.7
@@ -109,46 +118,82 @@ def display_instances(image, boxes, masks, class_ids, class_names,
         masked_image = apply_mask(masked_image, mask, color)
  
     return masked_image.astype(np.uint8)
- 
+
+def putImages(q):
+    while(True):
+        for i in range(IMAGES_BATCH):
+                # 動画ストリームからフレームを取得
+                ret, frame = cap.read()
+                # カメラ画像をリサイズ
+                image_cv2 = cv2.resize(frame,(width,height))
+                if i == 0:
+                    images = np.array([image_cv2])
+                else:
+                    images = np.append(images,[image_cv2],axis=0)
+        q.put(images)
+
 def main():
     # FPS 測定
     tm = cv2.TickMeter()
     tm.start()
     count = 0
-    max_count = 10
+    max_count = IMAGES_BATCH * 2
     fps = 0
     
     while(True):
-        # 動画ストリームからフレームを取得
-        ret, frame = cap.read()
+        
+        # for i in range(IMAGES_BATCH):
+        #     # 動画ストリームからフレームを取得
+        #     ret, frame = cap.read()
+        #     # カメラ画像をリサイズ
+        #     image_cv2 = cv2.resize(frame,(width,height))
+        #     if i == 0:
+        #         images = np.array([image_cv2])
+        #     else:
+        #         images = np.append(images,[image_cv2],axis=0)
+
+        Q = Queue()
+        P = Process(target=putImages,args=(Q,))
+        P.start()
+        images = Q.get()
+        print(len(images))
+        P.join()
+
+        tm.reset()
+        tm.start()
+        # t1 = tm.getTimeSec()
+        results = model.detect(images)
 
         # FPS 測定
-        if count == max_count:
-            tm.stop()
-            fps = max_count / tm.getTimeSec()
-            tm.reset()
-            tm.start()
-            count = 0
-            print('fps: {:.2f}'.format(fps))
+        # if count == max_count:
+        #     tm.stop()
+        #     fps = max_count / tm.getTimeSec()
+        #     tm.reset()
+        #     tm.start()
+        #     count = 0
+        #     print('fps: {:.2f}'.format(fps))
+        tm.stop()
+        # t2 = tm.getTimeSec()
+        # print(t2-t1)
+        fps = len(results) / tm.getTimeSec()
+        # tm.reset()
+        # tm.start()
+        count = 0
+        print('fps: {:.2f}'.format(fps))
 
         cv2.putText(frame, 'FPS: {:.2f}'.format(fps),(10,30),
                 cv2.FONT_HERSHEY_SIMPLEX,1.0,(0,255,0),thickness=2)        
 
-        # カメラ画像をリサイズ
-        image_cv2 = cv2.resize(frame,(width,height))
-        
-        results = model.detect([image_cv2])
- 
-        r = results[0]
-        camera = display_instances(image_cv2, r['rois'], r['masks'], r['class_ids'], 
+        for i in range(IMAGES_BATCH):
+            r = results[i]
+            camera = display_instances(images[i], r['rois'], r['masks'], r['class_ids'], 
                             class_names, r['scores'])
- 
-        cv2.imshow("camera window", camera) 
-        count += 1
-
-        # escを押したら終了。
-        if cv2.waitKey(1) == 27:
-            break
+            cv2.imshow("camera window", camera) 
+            count += 1
+            # print(i)
+            # escを押したら終了。
+            if cv2.waitKey(1) == 27:
+                break
     
     #終了
     cap.release()
